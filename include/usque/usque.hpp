@@ -2,292 +2,233 @@
 #define USQUE_USQUE_HPP_
 
 #include <chrono>
-#include <iostream>
-#include <map>
-#include <memory>
-#include <sstream>
-#include <stack>
 #include <string>
 #include <thread>
-#include <vector>
+#include <unordered_map>
+#include <unordered_set>
 
-#include "compiler.hpp"
+#define USQUE_CONCAT_RAW(a, b, c, d, e, f) a##b##c##d##e##f
+#define USQUE_CONCAT(a, b, c, d, e, f) USQUE_CONCAT_RAW(a, b, c, d, e, f)
+#define USQUE_STRINGIFY_RAW(x) #x
+#define USQUE_STRINGIFY(x) USQUE_STRINGIFY_RAW(x)
 
-#if USQUE_COMPILER_CXX_FUNC_IDENTIFIER == 1
+#define USQUE_FILENAME                                                         \
+  (__builtin_strrchr(__FILE__, '/') ? __builtin_strrchr(__FILE__, '/') + 1     \
+                                    : __FILE__)
+#define USQUE_REFERENCE_STR __FILE__ USQUE_STRINGIFY(__LINE__)
+#define UNIQUE_PROFILER_NAME                                                   \
+  USQUE_CONCAT(__, __FUNCTION__, _, __LINE__, _, __COUNTER__)
 #ifdef PROFILE_PRETTY_FUNCTION
-#if USQUE_COMPILER_IS_MSVC != 0
-#define USQUE_FUNCTION_NAME __FUNCSIG__
-#else
 #define USQUE_FUNCTION_NAME __PRETTY_FUNCTION__
-#endif
-#else
-#define USQUE_FUNCTION_NAME __func__
-#endif
 #else
 #define USQUE_FUNCTION_NAME __FUNCTION__
 #endif
-
-#define USQUE_CONCAT_RAW(x, y, z, w) x##y##z##w
-#define USQUE_CONCAT(x, y, z, w) USQUE_CONCAT_RAW(x, y, z, w)
-#define USQUE_STRINGIFY(x) #x
-#define USQUE_TOSTRING(x) USQUE_STRINGIFY(x)
-
-#define USQUE_REFERENCE __FILE__ ":" USQUE_TOSTRING(__LINE__)
-#define USQUE_BLOCK_VAR USQUE_CONCAT(__usque_block_, __FUNCTION__, __LINE__, __)
+#define USQUE_GET_ARG2(arg1, arg2, ...) arg2
 
 #ifdef PROFILER
-#define PROFILE_BLOCK(name)                                     \
-  usque::Block USQUE_BLOCK_VAR = usque::Profiler::get()->block( \
-      name, USQUE_REFERENCE, usque::BlockType::NONE);
-#define PROFILE_FUNC()                                          \
-  usque::Block USQUE_BLOCK_VAR = usque::Profiler::get()->block( \
-      USQUE_FUNCTION_NAME, USQUE_REFERENCE, usque::BlockType::FUNCTION);
-#define PROFILE_BEGIN(name)                                     \
-  usque::Block USQUE_BLOCK_VAR = usque::Profiler::get()->block( \
-      name, USQUE_REFERENCE, usque::BlockType::NONE);
-#define PROFILE_END() usque::Profiler::get()->stop();
-#define PROFILE_SAVE(file)     \
-  usque::Profiler::save(file); \
-  usque::Profiler::free();
+#define PROFILE_FUNC()                                                         \
+  usque::Profiler UNIQUE_PROFILER_NAME =                                       \
+      usque::Usque::get()->get_profiler()->scope(USQUE_FUNCTION_NAME,          \
+                                                 USQUE_REFERENCE_STR);
+#define PROFILE_BLOCK(name)                                                    \
+  usque::Profiler UNIQUE_PROFILER_NAME =                                       \
+      usque::Usque::get()->get_profiler()->scope(name, USQUE_REFERENCE_STR);
+#define PROFILE_BEGIN(name)                                                    \
+  usque::Profiler UNIQUE_PROFILER_NAME =                                       \
+      usque::Usque::get()->get_profiler()->scope(name, USQUE_REFERENCE_STR);
+#define PROFILE_END() usque::Usque::get()->get_profiler()->pop();
+#define PROFILE_FILE(name) usque::Usque::get()->set_file(name)
+#define PROFILE_SAVE() usque::Usque::get()->free();
 #else
-#define PROFILE_BLOCK(name)
 #define PROFILE_FUNC()
+#define PROFILE_BLOCK(name)
 #define PROFILE_BEGIN(name)
 #define PROFILE_END()
-#define PROFILE_SAVE(file)
+#define PROFILE_FILE(name)
+#define PROFILE_SAVE()
 #endif
 
 namespace usque {
-enum BlockType {
-  NONE,
-  FUNCTION,
-};
-struct Block;
-struct BlockData;
+
+typedef std::chrono::high_resolution_clock clock;
+typedef std::chrono::microseconds duration;
+
+class Profiler;
+class ThreadProfiler;
+class Usque;
 
 class Profiler {
-  public:
-  static inline Profiler* get()
-  {
-    static Profiler* instance = new Profiler();
-    if (instance == nullptr)
-      instance = new Profiler();
+public:
+  Profiler(const std::string &, const std::size_t &, ThreadProfiler *);
+  ~Profiler();
+  inline Profiler *get_this() { return this; }
+  std::string name;
+  std::size_t ref;
+  Profiler *parent;
+  ThreadProfiler *thread_profiler;
+  usque::clock::time_point start_time;
+};
+
+class ThreadProfiler {
+public:
+  ThreadProfiler();
+  ThreadProfiler(const std::thread::id &);
+  ~ThreadProfiler();
+  inline Profiler scope(const std::string &, const std::string &);
+  inline void push(Profiler *);
+  inline void pop();
+  inline void push_start(const std::size_t &, const std::string &,
+                         const usque::clock::time_point &);
+  inline void push_stop(const std::size_t &, const usque::clock::time_point &);
+
+private:
+  std::thread::id id;
+  Profiler *active_scope;
+  std::hash<std::string> ref_hash;
+};
+
+class Usque {
+public:
+  static inline Usque *get() {
+    static Usque *instance = nullptr;
+    if (instance == nullptr) {
+      instance = new Usque();
+    }
     return instance;
   }
-  static inline void free()
-  {
-    Profiler* instance = Profiler::get();
+  static inline void free() {
+    Usque *instance = usque::Usque::get();
+    for (auto &prof : instance->profilers) {
+      delete prof.second;
+    }
+    instance->close_file();
     delete instance;
   }
-  static inline bool save(const std::string& file)
-  {
-    return Profiler::get()->dump(file);
-  }
-  inline Block block(const std::string& name, const std::string& ref,
-      const BlockType& type);
-  inline void stop();
-  inline void pop_block();
+  inline ThreadProfiler *get_profiler();
+  inline void set_file(const std::string &);
+  inline void close_file();
+  inline void push_start(const std::thread::id &, const std::size_t &,
+                         const std::string &, const usque::clock::time_point &);
+  inline void push_stop(const std::thread::id &, const std::size_t &,
+                        const usque::clock::time_point &);
 
-  bool dump(const std::string& file) const;
-  std::string dumps() const;
-
-  private:
-  Profiler() {}
-
-  std::stringstream& serialize_thread_data(
-      std::stringstream& ser,
-      const std::map<std::string, BlockData>& thread_data) const;
-  std::stringstream&
-  serialize_block_data(std::stringstream& ser,
-      const std::pair<std::string, BlockData>& data) const;
-
-  std::map<std::thread::id, std::map<std::string, BlockData>> data;
-  std::map<std::thread::id, std::stack<Block*>> latest_block;
+private:
+  Usque();
+  std::string file_path;
+  FILE *file_ptr;
+  std::uint32_t count, flush_count;
+  std::unordered_map<std::thread::id, ThreadProfiler *> profilers;
+  std::unordered_set<std::size_t> profiler_ids;
 };
 
-struct BlockData {
-  BlockData()
-      : name("null")
-      , ref("null")
-      , type(usque::BlockType::NONE)
-  {
+Profiler::Profiler(const std::string &name, const std::size_t &ref,
+                   ThreadProfiler *thread)
+    : name(name), ref(ref), parent(nullptr), thread_profiler(thread),
+      start_time(usque::clock::now()) {}
+Profiler::~Profiler() {
+  if (thread_profiler) {
+    thread_profiler->pop();
   }
-  BlockData(const std::string& name, const std::string& reference, const BlockType& type)
-      : name(name)
-      , ref(reference)
-      , type(type)
-  {
+}
+
+ThreadProfiler::ThreadProfiler() : id(), active_scope(nullptr), ref_hash() {}
+ThreadProfiler::ThreadProfiler(const std::thread::id &id)
+    : id(id), active_scope(nullptr), ref_hash() {}
+ThreadProfiler::~ThreadProfiler() {
+  while (active_scope != nullptr) {
+    this->pop();
   }
+}
 
-  inline BlockData& at(const std::string& ref) { return children.at(ref); }
-  inline const BlockData& at(const std::string& ref) const
-  {
-    return children.at(ref);
-  }
+void ThreadProfiler::push_start(const std::size_t &ref, const std::string &name,
+                                const usque::clock::time_point &start) {
+  usque::Usque::get()->push_start(id, ref, name, start);
+}
+void ThreadProfiler::push_stop(const std::size_t &ref,
+                               const usque::clock::time_point &stop) {
+  usque::Usque::get()->push_stop(id, ref, stop);
+}
 
-  std::string name, ref;
-  BlockType type;
-  std::map<std::string, BlockData> children;
-  std::vector<std::array<std::chrono::steady_clock::time_point, 2>> time_points;
-};
+Profiler ThreadProfiler::scope(const std::string &name,
+                               const std::string &ref) {
+  Profiler scoped(name, ref_hash(ref), this);
+  this->push(scoped.get_this());
+  return scoped;
+}
 
-class Block {
-  public:
-  Block(BlockData* data_ref)
-      : active(true)
-      , data(data_ref)
-      , start_time(std::chrono::steady_clock::now())
-  {
-  }
-  ~Block()
-  {
-    if (active) {
-      data->time_points.push_back(
-          { start_time, std::chrono::steady_clock::now() });
-      Profiler::get()->pop_block();
-    }
-  }
-
-  inline void stop()
-  {
-    data->time_points.push_back({ start_time, std::chrono::steady_clock::now() });
-    Profiler::get()->pop_block();
-    active = false;
-  }
-
-  inline BlockData* get_data() { return data; }
-  inline Block* get_this() { return this; }
-
-  protected:
-  bool active;
-  BlockData* data;
-  std::chrono::steady_clock::time_point start_time;
-};
-
-Block Profiler::block(const std::string& name, const std::string& ref,
-    const BlockType& type)
-{
-  const std::thread::id thread_id = std::this_thread::get_id();
-  BlockData* data_ref = nullptr;
-  std::map<std::thread::id, std::stack<Block*>>::iterator it;
-  if ((it = latest_block.find(thread_id)) != latest_block.end() && it->second.size() != 0) {
-    if (it->second.top()->get_data()->children.find(ref) == it->second.top()->get_data()->children.end()) {
-      it->second.top()->get_data()->children.insert(
-          { ref, BlockData(name, ref, type) });
-    }
-    data_ref = &(it->second.top()->get_data()->at(ref));
+void ThreadProfiler::push(Profiler *scoped) {
+  push_start(scoped->ref, scoped->name, scoped->start_time);
+  if (active_scope == nullptr) {
+    active_scope = scoped;
   } else {
-    if (data[thread_id].find(ref) == data[thread_id].end()) {
-      data[thread_id].insert({ ref, BlockData(name, ref, type) });
-    }
-    data_ref = &(data[thread_id][ref]);
-  }
-  Block new_block(data_ref);
-  latest_block[thread_id].push(new_block.get_this());
-  return new_block;
-}
-void Profiler::stop()
-{
-  const std::thread::id thread_id = std::this_thread::get_id();
-  std::map<std::thread::id, std::stack<Block*>>::iterator it;
-  if ((it = latest_block.find(thread_id)) != latest_block.end()) {
-    it->second.top()->stop();
+    scoped->parent = active_scope;
+    active_scope = scoped;
   }
 }
-void Profiler::pop_block()
-{
-  const std::thread::id thread_id = std::this_thread::get_id();
-  std::map<std::thread::id, std::stack<Block*>>::iterator it;
-  if ((it = latest_block.find(thread_id)) != latest_block.end()) {
-    it->second.pop();
-  }
-}
-
-bool Profiler::dump(const std::string& file) const
-{
-  FILE* out_file = fopen(file.c_str(), "w");
-  if (out_file) {
-    fprintf(out_file, "%s", dumps().c_str());
-    fclose(out_file);
-    return true;
+void ThreadProfiler::pop() {
+  if (active_scope == nullptr) {
+    return;
   } else {
-    fprintf(stderr, "Failed to open file \"%s\"", file.c_str());
-    return false;
+    Profiler *pop_scope = active_scope;
+    active_scope = pop_scope->parent;
+    push_stop(pop_scope->ref, usque::clock::now());
+    pop_scope->thread_profiler = nullptr;
   }
 }
 
-std::string Profiler::dumps() const
-{
-  std::stringstream ser;
-  ser << "{";
-  for (auto& it : data) {
-    ser << "\"" << it.first << "\":";
-    serialize_thread_data(ser, it.second);
+ThreadProfiler *Usque::get_profiler() {
+  const std::thread::id thread_id = std::this_thread::get_id();
+  std::unordered_map<std::thread::id, ThreadProfiler *>::iterator it;
+  if ((it = profilers.find(thread_id)) != profilers.end()) {
+    return it->second;
+  } else {
+    ThreadProfiler *thread_profiler = new ThreadProfiler(thread_id);
+    profilers[thread_id] = thread_profiler;
+    return thread_profiler;
   }
-  ser << "}";
-  std::string json = ser.str();
-  std::string::size_type it;
-  while ((it = json.find("],]")) != std::string::npos) {
-    json.replace(it, 3, "]]");
-  }
-  while ((it = json.find("},}")) != std::string::npos) {
-    json.replace(it, 3, "}}");
-  }
-  return json;
 }
-std::stringstream& Profiler::serialize_thread_data(
-    std::stringstream& ser,
-    const std::map<std::string, BlockData>& thread_data) const
-{
-  ser << "{";
-  for (auto& it : thread_data) {
-    serialize_block_data(ser, it);
+void Usque::set_file(const std::string &file) { file_path = file; }
+void Usque::close_file() {
+  if (file_ptr != nullptr) {
+    fflush(file_ptr);
+    fclose(file_ptr);
   }
-  ser << "},";
-  return ser;
 }
-std::stringstream& Profiler::serialize_block_data(
-    std::stringstream& ser,
-    const std::pair<std::string, BlockData>& data) const
-{
-  ser << "\"" << data.second.name << "\":{";
-  ser << "\"reference\": \"" << data.second.ref << "\",";
-  switch (data.second.type) {
-  case usque::BlockType::FUNCTION:
-    ser << "\"type\":\"FUNCTION\"";
-    break;
-  default:
-    ser << "\"type\":null";
-    break;
+void Usque::push_start(const std::thread::id &thread, const std::size_t &ref,
+                       const std::string &name,
+                       const usque::clock::time_point &start) {
+  if (file_ptr == nullptr) {
+    file_ptr = fopen(file_path.c_str(), "w");
   }
-  if (data.second.time_points.size() != 0) {
-    ser << ",\"data\":[";
-    for (auto& tp : data.second.time_points) {
-      ser << "["
-          << (std::chrono::duration_cast<std::chrono::microseconds>(
-                  tp[0].time_since_epoch()))
-                 .count()
-          << ","
-          << (std::chrono::duration_cast<std::chrono::microseconds>(
-                  tp[1].time_since_epoch()))
-                 .count()
-          << ","
-          << (std::chrono::duration_cast<std::chrono::microseconds>(tp[1] - tp[0]))
-                 .count()
-          << "],";
-    }
-    ser << "]";
+  if (profiler_ids.find(ref) == profiler_ids.end()) {
+    profiler_ids.insert(ref);
+    fprintf(file_ptr, "ID 0x%lX %s\n", ref, name.c_str());
   }
-  if (data.second.children.size() != 0) {
-    ser << ",\"blocks\":{";
-    for (auto& sub : data.second.children) {
-      serialize_block_data(ser, sub);
-    }
-    ser << "}";
+  fprintf(file_ptr, "BEGIN 0x%lX 0x%lX %lu\n", thread, ref,
+          std::chrono::duration_cast<usque::duration>(start.time_since_epoch())
+              .count());
+  count++;
+  if (count >= flush_count) {
+    fflush(file_ptr);
   }
-  ser << "},";
-  return ser;
 }
+void Usque::push_stop(const std::thread::id &thread, const std::size_t &ref,
+                      const usque::clock::time_point &stop) {
+  if (file_ptr == nullptr) {
+    file_ptr = fopen("profile.txt", "w");
+  }
+  fprintf(file_ptr, "END 0x%lX 0x%lX %lu\n", thread, ref,
+          std::chrono::duration_cast<usque::duration>(stop.time_since_epoch())
+              .count());
+  count++;
+  if (count >= flush_count) {
+    fflush(file_ptr);
+  }
+}
+
+Usque::Usque()
+    : file_path("profile.txt"), file_ptr(nullptr), count(0), flush_count(1000),
+      profilers(), profiler_ids() {}
 
 } // namespace usque
 

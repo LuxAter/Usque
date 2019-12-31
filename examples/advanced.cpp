@@ -19,8 +19,9 @@ void foo(const int &c) {
 }
 
 int main(int argc, char const *argv[]) {
-  PROFILE_FILE("threads.txt");
+  PROFILE_FILE("advanced.txt");
   PROFILE_FUNC();
+  PROFILE_BEGIN("Multi Thread")
   std::vector<std::thread> threads;
   PROFILE_BEGIN("Emplace");
   for (int i = 0; i < 100; i += 10) {
@@ -30,6 +31,12 @@ int main(int argc, char const *argv[]) {
   PROFILE_BEGIN("Join")
   for (auto &t : threads) {
     t.join();
+  }
+  PROFILE_END()
+  PROFILE_END()
+  PROFILE_BEGIN("Single Thread")
+  for (int i = 0; i < 100; i += 10) {
+    foo(i);
   }
   PROFILE_END()
   PROFILE_SAVE()

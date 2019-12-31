@@ -12,9 +12,9 @@ float foo(int i) {
 }
 
 int main(int argc, char const *argv[]) {
-  PROFILE_FILE("simple.txt");
+  PROFILE_FILE("speed_check.txt");
   PROFILE_FUNC();
-  for (int i = 0; i < 1000; i += 10) {
+  for (int i = 0; i < 100000; i += 10) {
     PROFILE_BLOCK("frame");
     foo(i);
   }
