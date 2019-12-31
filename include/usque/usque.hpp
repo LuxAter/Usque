@@ -27,17 +27,35 @@
 #define USQUE_FUNCTION_NAME __FUNCTION__
 #endif
 
+#define USQUE_CONCAT_RAW(x, y, z, w) x##y##z##w
+#define USQUE_CONCAT(x, y, z, w) USQUE_CONCAT_RAW(x, y, z, w)
 #define USQUE_STRINGIFY(x) #x
 #define USQUE_TOSTRING(x) USQUE_STRINGIFY(x)
+
 #define USQUE_REFERENCE __FILE__ ":" USQUE_TOSTRING(__LINE__)
+#define USQUE_BLOCK_VAR USQUE_CONCAT(__usque_block_, __FUNCTION__, __LINE__, __)
 
-#define PROFILE_BLOCK(name)                                                    \
-  usque::Block __FUNCTION__##__LINE__ = usque::Profiler::get()->block(         \
+#ifdef PROFILER
+#define PROFILE_BLOCK(name)                                     \
+  usque::Block USQUE_BLOCK_VAR = usque::Profiler::get()->block( \
       name, USQUE_REFERENCE, usque::BlockType::NONE);
-
-#define PROFILE_FUNC()                                                         \
-  usque::Block __FUNCTION__##__LINE__ = usque::Profiler::get()->block(         \
+#define PROFILE_FUNC()                                          \
+  usque::Block USQUE_BLOCK_VAR = usque::Profiler::get()->block( \
       USQUE_FUNCTION_NAME, USQUE_REFERENCE, usque::BlockType::FUNCTION);
+#define PROFILE_BEGIN(name)                                     \
+  usque::Block USQUE_BLOCK_VAR = usque::Profiler::get()->block( \
+      name, USQUE_REFERENCE, usque::BlockType::NONE);
+#define PROFILE_END() usque::Profiler::get()->stop();
+#define PROFILE_SAVE(file)     \
+  usque::Profiler::save(file); \
+  usque::Profiler::free();
+#else
+#define PROFILE_BLOCK(name)
+#define PROFILE_FUNC()
+#define PROFILE_BEGIN(name)
+#define PROFILE_END()
+#define PROFILE_SAVE(file)
+#endif
 
 namespace usque {
 enum BlockType {
@@ -48,90 +66,119 @@ struct Block;
 struct BlockData;
 
 class Profiler {
-public:
-  static inline Profiler *get() {
-    static Profiler *instance = new Profiler();
+  public:
+  static inline Profiler* get()
+  {
+    static Profiler* instance = new Profiler();
     if (instance == nullptr)
       instance = new Profiler();
     return instance;
   }
-  static inline void free() {
-    Profiler *instance = Profiler::get();
+  static inline void free()
+  {
+    Profiler* instance = Profiler::get();
     delete instance;
   }
-  static inline bool save(const std::string &file) {
+  static inline bool save(const std::string& file)
+  {
     return Profiler::get()->dump(file);
   }
-  inline Block block(const std::string &name, const std::string &ref,
-                     const BlockType &type);
+  inline Block block(const std::string& name, const std::string& ref,
+      const BlockType& type);
+  inline void stop();
   inline void pop_block();
 
-  bool dump(const std::string &file) const;
+  bool dump(const std::string& file) const;
   std::string dumps() const;
 
-private:
+  private:
   Profiler() {}
 
-  std::stringstream &serialize_thread_data(
-      std::stringstream &ser,
-      const std::map<std::string, BlockData> &thread_data) const;
-  std::stringstream &
-  serialize_block_data(std::stringstream &ser,
-                       const std::pair<std::string, BlockData> &data) const;
+  std::stringstream& serialize_thread_data(
+      std::stringstream& ser,
+      const std::map<std::string, BlockData>& thread_data) const;
+  std::stringstream&
+  serialize_block_data(std::stringstream& ser,
+      const std::pair<std::string, BlockData>& data) const;
 
   std::map<std::thread::id, std::map<std::string, BlockData>> data;
-  std::map<std::thread::id, std::stack<Block *>> latest_block;
+  std::map<std::thread::id, std::stack<Block*>> latest_block;
 };
 
 struct BlockData {
-  BlockData() : name("null"), type(usque::BlockType::NONE) {}
-  BlockData(const std::string &name, const BlockType &type)
-      : name(name), type(type) {}
+  BlockData()
+      : name("null")
+      , ref("null")
+      , type(usque::BlockType::NONE)
+  {
+  }
+  BlockData(const std::string& name, const std::string& reference, const BlockType& type)
+      : name(name)
+      , ref(reference)
+      , type(type)
+  {
+  }
 
-  inline BlockData &at(const std::string &ref) { return children.at(ref); }
-  inline const BlockData &at(const std::string &ref) const {
+  inline BlockData& at(const std::string& ref) { return children.at(ref); }
+  inline const BlockData& at(const std::string& ref) const
+  {
     return children.at(ref);
   }
 
-  std::string name;
+  std::string name, ref;
   BlockType type;
   std::map<std::string, BlockData> children;
   std::vector<std::array<std::chrono::steady_clock::time_point, 2>> time_points;
 };
 
 class Block {
-public:
-  Block(BlockData *data_ref)
-      : data(data_ref), start_time(std::chrono::steady_clock::now()) {}
-  ~Block() {
-    data->time_points.push_back({start_time, std::chrono::steady_clock::now()});
-    Profiler::get()->pop_block();
+  public:
+  Block(BlockData* data_ref)
+      : active(true)
+      , data(data_ref)
+      , start_time(std::chrono::steady_clock::now())
+  {
+  }
+  ~Block()
+  {
+    if (active) {
+      data->time_points.push_back(
+          { start_time, std::chrono::steady_clock::now() });
+      Profiler::get()->pop_block();
+    }
   }
 
-  inline BlockData *get_data() { return data; }
-  inline Block *get_this() { return this; }
+  inline void stop()
+  {
+    data->time_points.push_back({ start_time, std::chrono::steady_clock::now() });
+    Profiler::get()->pop_block();
+    active = false;
+  }
 
-protected:
-  BlockData *data;
+  inline BlockData* get_data() { return data; }
+  inline Block* get_this() { return this; }
+
+  protected:
+  bool active;
+  BlockData* data;
   std::chrono::steady_clock::time_point start_time;
 };
 
-Block Profiler::block(const std::string &name, const std::string &ref,
-                      const BlockType &type) {
+Block Profiler::block(const std::string& name, const std::string& ref,
+    const BlockType& type)
+{
   const std::thread::id thread_id = std::this_thread::get_id();
-  BlockData *data_ref = nullptr;
-  std::map<std::thread::id, std::stack<Block *>>::iterator it;
-  if ((it = latest_block.find(thread_id)) != latest_block.end() &&
-      it->second.size() != 0) {
-    if (it->second.top()->get_data()->children.find(ref) ==
-        it->second.top()->get_data()->children.end()) {
+  BlockData* data_ref = nullptr;
+  std::map<std::thread::id, std::stack<Block*>>::iterator it;
+  if ((it = latest_block.find(thread_id)) != latest_block.end() && it->second.size() != 0) {
+    if (it->second.top()->get_data()->children.find(ref) == it->second.top()->get_data()->children.end()) {
       it->second.top()->get_data()->children.insert(
-          {ref, BlockData(name, type)});
+          { ref, BlockData(name, ref, type) });
     }
     data_ref = &(it->second.top()->get_data()->at(ref));
   } else {
     if (data[thread_id].find(ref) == data[thread_id].end()) {
-      data[thread_id].insert({ref, BlockData(name, type)});
+      data[thread_id].insert({ ref, BlockData(name, ref, type) });
     }
     data_ref = &(data[thread_id][ref]);
   }
@@ -139,16 +186,26 @@ Block Profiler::block(const std::string &name, const std::string &ref,
   latest_block[thread_id].push(new_block.get_this());
   return new_block;
 }
-void Profiler::pop_block() {
+void Profiler::stop()
+{
   const std::thread::id thread_id = std::this_thread::get_id();
-  std::map<std::thread::id, std::stack<Block *>>::iterator it;
+  std::map<std::thread::id, std::stack<Block*>>::iterator it;
+  if ((it = latest_block.find(thread_id)) != latest_block.end()) {
+    it->second.top()->stop();
+  }
+}
+void Profiler::pop_block()
+{
+  const std::thread::id thread_id = std::this_thread::get_id();
+  std::map<std::thread::id, std::stack<Block*>>::iterator it;
   if ((it = latest_block.find(thread_id)) != latest_block.end()) {
     it->second.pop();
   }
 }
 
-bool Profiler::dump(const std::string &file) const {
-  FILE *out_file = fopen(file.c_str(), "w");
+bool Profiler::dump(const std::string& file) const
+{
+  FILE* out_file = fopen(file.c_str(), "w");
   if (out_file) {
     fprintf(out_file, "%s", dumps().c_str());
     fclose(out_file);
@@ -159,10 +216,11 @@ bool Profiler::dump(const std::string &file) const {
   }
 }
 
-std::string Profiler::dumps() const {
+std::string Profiler::dumps() const
+{
   std::stringstream ser;
   ser << "{";
-  for (auto &it : data) {
+  for (auto& it : data) {
     ser << "\"" << it.first << "\":";
     serialize_thread_data(ser, it.second);
   }
@@ -177,20 +235,23 @@ std::string Profiler::dumps() const {
   }
   return json;
 }
-std::stringstream &Profiler::serialize_thread_data(
-    std::stringstream &ser,
-    const std::map<std::string, BlockData> &thread_data) const {
+std::stringstream& Profiler::serialize_thread_data(
+    std::stringstream& ser,
+    const std::map<std::string, BlockData>& thread_data) const
+{
   ser << "{";
-  for (auto &it : thread_data) {
+  for (auto& it : thread_data) {
     serialize_block_data(ser, it);
   }
   ser << "},";
   return ser;
 }
-std::stringstream &Profiler::serialize_block_data(
-    std::stringstream &ser,
-    const std::pair<std::string, BlockData> &data) const {
+std::stringstream& Profiler::serialize_block_data(
+    std::stringstream& ser,
+    const std::pair<std::string, BlockData>& data) const
+{
   ser << "\"" << data.second.name << "\":{";
+  ser << "\"reference\": \"" << data.second.ref << "\",";
   switch (data.second.type) {
   case usque::BlockType::FUNCTION:
     ser << "\"type\":\"FUNCTION\"";
@@ -201,7 +262,7 @@ std::stringstream &Profiler::serialize_block_data(
   }
   if (data.second.time_points.size() != 0) {
     ser << ",\"data\":[";
-    for (auto &tp : data.second.time_points) {
+    for (auto& tp : data.second.time_points) {
       ser << "["
           << (std::chrono::duration_cast<std::chrono::microseconds>(
                   tp[0].time_since_epoch()))
@@ -211,8 +272,7 @@ std::stringstream &Profiler::serialize_block_data(
                   tp[1].time_since_epoch()))
                  .count()
           << ","
-          << (std::chrono::duration_cast<std::chrono::microseconds>(tp[1] -
-                                                                    tp[0]))
+          << (std::chrono::duration_cast<std::chrono::microseconds>(tp[1] - tp[0]))
                  .count()
           << "],";
     }
@@ -220,7 +280,7 @@ std::stringstream &Profiler::serialize_block_data(
   }
   if (data.second.children.size() != 0) {
     ser << ",\"blocks\":{";
-    for (auto &sub : data.second.children) {
+    for (auto& sub : data.second.children) {
       serialize_block_data(ser, sub);
     }
     ser << "}";

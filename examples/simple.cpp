@@ -1,4 +1,5 @@
-// #define PROFILE_PRETTY_FUNCTION
+#define PROFILE_PRETTY_FUNCTION
+// #define PROFILER
 #include <usque/usque.hpp>
 
 int foo() {
@@ -7,18 +8,18 @@ int foo() {
 }
 
 int main(int argc, char const *argv[]) {
-  for (std::size_t i = 0; i < 2; i++) {
+  for (std::size_t i = 0; i < 500; i++) {
+    printf("Frame: %i\n", i);
     PROFILE_FUNC();
     if (true) {
       PROFILE_BLOCK("if block");
       foo();
     }
-    for (int j = 0; j < 100; j++) {
-      PROFILE_BLOCK("frame");
+    for (int j = 0; j < 100000; j++) {
       foo();
     }
   }
-  usque::Profiler::save("usque.json");
-  usque::Profiler::free();
+  printf("Saving file\n");
+  PROFILE_SAVE("simple.json")
   return 0;
 }
