@@ -150,40 +150,47 @@
 
 #endif
 
-#  if USQUE_COMPILER_IS_Clang
+#  if USQUE_COMPILER_IS_MSVC
 
-#    if !(((__clang_major__ * 100) + __clang_minor__) >= 301)
+#    if !(_MSC_VER >= 1600)
 #      error Unsupported compiler version
 #    endif
 
-# define USQUE_COMPILER_VERSION_MAJOR (__clang_major__)
-# define USQUE_COMPILER_VERSION_MINOR (__clang_minor__)
-# define USQUE_COMPILER_VERSION_PATCH (__clang_patchlevel__)
-# if defined(_MSC_VER)
-   /* _MSC_VER = VVRR */
-#  define USQUE_SIMULATE_VERSION_MAJOR (_MSC_VER / 100)
-#  define USQUE_SIMULATE_VERSION_MINOR (_MSC_VER % 100)
+  /* _MSC_VER = VVRR */
+# define USQUE_COMPILER_VERSION_MAJOR (_MSC_VER / 100)
+# define USQUE_COMPILER_VERSION_MINOR (_MSC_VER % 100)
+# if defined(_MSC_FULL_VER)
+#  if _MSC_VER >= 1400
+    /* _MSC_FULL_VER = VVRRPPPPP */
+#   define USQUE_COMPILER_VERSION_PATCH (_MSC_FULL_VER % 100000)
+#  else
+    /* _MSC_FULL_VER = VVRRPPPP */
+#   define USQUE_COMPILER_VERSION_PATCH (_MSC_FULL_VER % 10000)
+#  endif
+# endif
+# if defined(_MSC_BUILD)
+#  define USQUE_COMPILER_VERSION_TWEAK (_MSC_BUILD)
 # endif
 
-#    if ((__clang_major__ * 100) + __clang_minor__) >= 301 && __has_feature(cxx_constexpr)
+#    if _MSC_VER >= 1900
 #      define USQUE_COMPILER_CXX_CONSTEXPR 1
 #    else
 #      define USQUE_COMPILER_CXX_CONSTEXPR 0
 #    endif
 
-#    if ((__clang_major__ * 100) + __clang_minor__) >= 301 && __has_feature(cxx_deleted_functions)
+#    if _MSC_VER >= 1900
 #      define USQUE_COMPILER_CXX_DELETED_FUNCTIONS 1
 #    else
 #      define USQUE_COMPILER_CXX_DELETED_FUNCTIONS 0
 #    endif
 
-#    if ((__clang_major__ * 100) + __clang_minor__) >= 301 && __cplusplus >= 201103L
+#    if _MSC_VER >= 1900
 #      define USQUE_COMPILER_CXX_FUNC_IDENTIFIER 1
 #    else
 #      define USQUE_COMPILER_CXX_FUNC_IDENTIFIER 0
 #    endif
 
-#    if ((__clang_major__ * 100) + __clang_minor__) >= 301 && __has_feature(cxx_thread_local)
+#    if _MSC_VER >= 1900
 #      define USQUE_COMPILER_CXX_THREAD_LOCAL 1
 #    else
 #      define USQUE_COMPILER_CXX_THREAD_LOCAL 0
@@ -226,6 +233,45 @@
 #    endif
 
 #    if (__GNUC__ * 100 + __GNUC_MINOR__) >= 408 && __cplusplus >= 201103L
+#      define USQUE_COMPILER_CXX_THREAD_LOCAL 1
+#    else
+#      define USQUE_COMPILER_CXX_THREAD_LOCAL 0
+#    endif
+
+#  elif USQUE_COMPILER_IS_Clang
+
+#    if !(((__clang_major__ * 100) + __clang_minor__) >= 301)
+#      error Unsupported compiler version
+#    endif
+
+# define USQUE_COMPILER_VERSION_MAJOR (__clang_major__)
+# define USQUE_COMPILER_VERSION_MINOR (__clang_minor__)
+# define USQUE_COMPILER_VERSION_PATCH (__clang_patchlevel__)
+# if defined(_MSC_VER)
+   /* _MSC_VER = VVRR */
+#  define USQUE_SIMULATE_VERSION_MAJOR (_MSC_VER / 100)
+#  define USQUE_SIMULATE_VERSION_MINOR (_MSC_VER % 100)
+# endif
+
+#    if ((__clang_major__ * 100) + __clang_minor__) >= 301 && __has_feature(cxx_constexpr)
+#      define USQUE_COMPILER_CXX_CONSTEXPR 1
+#    else
+#      define USQUE_COMPILER_CXX_CONSTEXPR 0
+#    endif
+
+#    if ((__clang_major__ * 100) + __clang_minor__) >= 301 && __has_feature(cxx_deleted_functions)
+#      define USQUE_COMPILER_CXX_DELETED_FUNCTIONS 1
+#    else
+#      define USQUE_COMPILER_CXX_DELETED_FUNCTIONS 0
+#    endif
+
+#    if ((__clang_major__ * 100) + __clang_minor__) >= 301 && __cplusplus >= 201103L
+#      define USQUE_COMPILER_CXX_FUNC_IDENTIFIER 1
+#    else
+#      define USQUE_COMPILER_CXX_FUNC_IDENTIFIER 0
+#    endif
+
+#    if ((__clang_major__ * 100) + __clang_minor__) >= 301 && __has_feature(cxx_thread_local)
 #      define USQUE_COMPILER_CXX_THREAD_LOCAL 1
 #    else
 #      define USQUE_COMPILER_CXX_THREAD_LOCAL 0
@@ -290,47 +336,41 @@
 #      define USQUE_COMPILER_CXX_THREAD_LOCAL 0
 #    endif
 
-#  elif USQUE_COMPILER_IS_MSVC
+#  elif USQUE_COMPILER_IS_AppleClang
 
-#    if !(_MSC_VER >= 1600)
+#    if !(((__clang_major__ * 100) + __clang_minor__) >= 400)
 #      error Unsupported compiler version
 #    endif
 
-  /* _MSC_VER = VVRR */
-# define USQUE_COMPILER_VERSION_MAJOR (_MSC_VER / 100)
-# define USQUE_COMPILER_VERSION_MINOR (_MSC_VER % 100)
-# if defined(_MSC_FULL_VER)
-#  if _MSC_VER >= 1400
-    /* _MSC_FULL_VER = VVRRPPPPP */
-#   define USQUE_COMPILER_VERSION_PATCH (_MSC_FULL_VER % 100000)
-#  else
-    /* _MSC_FULL_VER = VVRRPPPP */
-#   define USQUE_COMPILER_VERSION_PATCH (_MSC_FULL_VER % 10000)
-#  endif
+# define USQUE_COMPILER_VERSION_MAJOR (__clang_major__)
+# define USQUE_COMPILER_VERSION_MINOR (__clang_minor__)
+# define USQUE_COMPILER_VERSION_PATCH (__clang_patchlevel__)
+# if defined(_MSC_VER)
+   /* _MSC_VER = VVRR */
+#  define USQUE_SIMULATE_VERSION_MAJOR (_MSC_VER / 100)
+#  define USQUE_SIMULATE_VERSION_MINOR (_MSC_VER % 100)
 # endif
-# if defined(_MSC_BUILD)
-#  define USQUE_COMPILER_VERSION_TWEAK (_MSC_BUILD)
-# endif
+# define USQUE_COMPILER_VERSION_TWEAK (__apple_build_version__)
 
-#    if _MSC_VER >= 1900
+#    if ((__clang_major__ * 100) + __clang_minor__) >= 400 && __has_feature(cxx_constexpr)
 #      define USQUE_COMPILER_CXX_CONSTEXPR 1
 #    else
 #      define USQUE_COMPILER_CXX_CONSTEXPR 0
 #    endif
 
-#    if _MSC_VER >= 1900
+#    if ((__clang_major__ * 100) + __clang_minor__) >= 400 && __has_feature(cxx_deleted_functions)
 #      define USQUE_COMPILER_CXX_DELETED_FUNCTIONS 1
 #    else
 #      define USQUE_COMPILER_CXX_DELETED_FUNCTIONS 0
 #    endif
 
-#    if _MSC_VER >= 1900
+#    if ((__clang_major__ * 100) + __clang_minor__) >= 400 && __cplusplus >= 201103L
 #      define USQUE_COMPILER_CXX_FUNC_IDENTIFIER 1
 #    else
 #      define USQUE_COMPILER_CXX_FUNC_IDENTIFIER 0
 #    endif
 
-#    if _MSC_VER >= 1900
+#    if ((__clang_major__ * 100) + __clang_minor__) >= 400 && __has_feature(cxx_thread_local)
 #      define USQUE_COMPILER_CXX_THREAD_LOCAL 1
 #    else
 #      define USQUE_COMPILER_CXX_THREAD_LOCAL 0
