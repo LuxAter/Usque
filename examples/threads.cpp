@@ -1,5 +1,7 @@
+#define PROFILER_IMPL
 #define PROFILE_PRETTY_FUNCTION
 #define PROFILER
+#define PROFILER_FILE
 #include <usque/usque.hpp>
 
 #include <thread>
@@ -19,7 +21,6 @@ void foo(const int &c) {
 }
 
 int main(int argc, char const *argv[]) {
-  PROFILE_FILE("threads.txt");
   PROFILE_FUNC();
   std::vector<std::thread> threads;
   PROFILE_BEGIN("Emplace");
@@ -32,6 +33,6 @@ int main(int argc, char const *argv[]) {
     t.join();
   }
   PROFILE_END()
-  PROFILE_SAVE()
+  PROFILE_STOP()
   return 0;
 }
